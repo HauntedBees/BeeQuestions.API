@@ -122,6 +122,7 @@ class QuestionsController extends BeeController {
     /** @return bool */
     public function PostAnswerLikeToggle(string $answerURL) {
         $answerID = $this->FindAnswerID($answerURL);
+        if($answerID === 0) { return $this->response->Error("Invalid answer."); }
         try {
             $this->db->BeginTransaction();
             $tokenID = $this->GetMaybeUserId();
@@ -141,7 +142,43 @@ class QuestionsController extends BeeController {
             throw $e;
         }
     }
-    
+    /** @return BQAnswer[] */
+    public function GetUserAnswers(string $displayName, ?int $offset = 0, ?int $pageSize = 10) {
+        $userID = $this->GetUserIdFromDisplayName($displayName);
+        if($userID === 0) { return $this->response->Error("Invalid user"); }
+        $page = $offset * $pageSize;
+        $tbl = $this->db->GetObjects("BQAnswer", 
+            "SELECT a.url, u.displayname AS author, a.answer, a.status, a.opened, a.closed, COUNT(DISTINCT q.id) AS questions, IFNULL(GROUP_CONCAT(DISTINCT t.name SEPARATOR '|'), '') AS tagsStr
+            FROM answer a
+                INNER JOIN users u ON a.user = u.id
+                LEFT JOIN question q ON a.id = q.answer
+                LEFT JOIN answer_tag atx ON a.id = atx.answer
+                LEFT JOIN tag t ON atx.tag = t.id
+            WHERE a.user = :u
+            GROUP BY a.url, u.displayname, a.answer, a.status, a.opened, a.closed
+            ORDER BY a.opened DESC
+            LIMIT $page, $pageSize", ["u" => $userID]);
+        return $this->response->OK($tbl);
+    }
+    /** @return BQAnswer[] */
+    public function GetUserBookmarkedAnswers(?int $offset = 0, ?int $pageSize = 10) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Error("Invalid user"); }
+        $page = $offset * $pageSize;
+        $tbl = $this->db->GetObjects("BQAnswer", 
+            "SELECT a.url, u.displayname AS author, a.answer, a.status, a.opened, a.closed, COUNT(DISTINCT q.id) AS questions, IFNULL(GROUP_CONCAT(DISTINCT t.name SEPARATOR '|'), '') AS tagsStr
+            FROM answer a
+                INNER JOIN users u ON a.user = u.id
+                INNER JOIN answer_user_likes aux ON a.id = aux.answer
+                LEFT JOIN question q ON a.id = q.answer
+                LEFT JOIN answer_tag atx ON a.id = atx.answer
+                LEFT JOIN tag t ON atx.tag = t.id
+            WHERE aux.user = :u
+            GROUP BY a.url, u.displayname, a.answer, a.status, a.opened, a.closed
+            ORDER BY a.opened DESC
+            LIMIT $page, $pageSize", ["u" => $userID]);
+        return $this->response->OK($tbl);
+    }
     /** @return BQAnswer[] */
     public function GetHomePageAnswers(int $type, ?int $offset = 0, ?int $pageSize = 10) {
         [$whereQuery, $orderBy] = $this->GetWhereAndOrderQueries($type);
@@ -262,6 +299,41 @@ class QuestionsController extends BeeController {
             throw $e;
         }
     }
+    /** @return BQQuestion[] */
+    public function GetUserQuestions(string $displayName, ?int $offset = 0, ?int $pageSize = 10) {
+        $userID = $this->GetUserIdFromDisplayName($displayName);
+        if($userID === 0) { return $this->response->Error("Invalid user"); }
+        $page = $offset * $pageSize;
+        $tbl = $this->db->GetObjects("BQQuestion", 
+            "SELECT q.id, u.displayname AS author, q.question, q.posted, q.score, COUNT(x.user) AS liked,
+                (q.user = :u) AS yours, a.answer, (q.id = a.bestquestion) AS winner, a.url AS answerURL
+            FROM question q
+                INNER JOIN users u ON q.user = u.id
+                INNER JOIN answer a ON q.answer = a.id
+                LEFT JOIN question_user_likes x ON x.question = q.id AND x.user = :u
+            WHERE q.user = :u
+            GROUP BY q.id
+            LIMIT $page, $pageSize", ["u" => $userID]);
+        return $this->response->OK($tbl);
+    }
+    /** @return BQQuestion[] */
+    public function GetUserBookmarkedQuestions(?int $offset = 0, ?int $pageSize = 10) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Error("Invalid user"); }
+        $page = $offset * $pageSize;
+        $tbl = $this->db->GetObjects("BQQuestion", 
+            "SELECT q.id, u.displayname AS author, q.question, q.posted, q.score, COUNT(x.user) AS liked,
+                (q.user = :u) AS yours, a.answer, (q.id = a.bestquestion) AS winner, a.url AS answerURL
+            FROM question q
+                INNER JOIN users u ON q.user = u.id
+                INNER JOIN question_user_likes qux ON q.id = qux.question
+                INNER JOIN answer a ON q.answer = a.id
+                LEFT JOIN question_user_likes x ON x.question = q.id AND x.user = :u
+            WHERE qux.user = :u
+            GROUP BY q.id
+            LIMIT $page, $pageSize", ["u" => $userID]);
+        return $this->response->OK($tbl);
+    }
     private function GetQuestions(int $answerID, int $userID):array {
         return $this->db->GetObjects("BQQuestion", 
             "SELECT q.id, u.displayname AS author, q.question, q.posted, q.score, COUNT(x.user) AS liked, (q.user = $userID) AS yours
@@ -306,6 +378,9 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region Helpers */
+    private function GetUserIdFromDisplayName(string $displayName):int {
+        return $this->db->GetInt("SELECT id FROM users WHERE displayname = :d", ["d" => $displayName]);
+    }
     private function GetMaybeUserId():int {
         $auth = new BeeAuth();
         try {

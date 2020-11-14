@@ -72,6 +72,9 @@ class BQQuestion {
     public int $score;
     public bool $liked;
     public bool $yours;
+    public ?bool $winner;
+    public ?string $answer;
+    public ?string $answerURL;
 }
 class BQPostedQuestion {
     public string $answer;
