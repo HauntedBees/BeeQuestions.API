@@ -281,7 +281,7 @@ class QuestionsController extends BeeController {
             "SELECT u.id
             FROM users u
                 INNER JOIN userlevel l ON u.level = l.level
-                LEFT JOIN question q ON q.user = u.id AND DAY(q.posted) = DAY(NOW())
+                LEFT JOIN question q ON q.user = u.id AND q.posted >= DATE_ADD(NOW(), INTERVAL -1 DAY)
             WHERE u.id = :i
                 AND (u.blockeduntil IS NULL OR NOW() > u.blockeduntil)
             GROUP BY u.id, l.questionsperday

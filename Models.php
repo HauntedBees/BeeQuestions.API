@@ -21,6 +21,10 @@
  * @see https://github.com/HauntedBees/BeeAPI
  */
 /* #region Auth */
+class BQBlockUser {
+    public int $userID;
+    public string $blocktype;
+}
 class BQUserToken extends BeeUserToken {
     public BQUser $bquser;
 }
