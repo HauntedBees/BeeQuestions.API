@@ -76,6 +76,10 @@ class BQQuestion {
     public ?string $answer;
     public ?string $answerURL;
 }
+class BQTag {
+    public string $tag;
+    public int $answers;
+}
 class BQPostedQuestion {
     public string $answer;
     public string $question;

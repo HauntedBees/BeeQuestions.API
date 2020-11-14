@@ -346,6 +346,27 @@ class QuestionsController extends BeeController {
     /* #endregion */
     /* #region Tags */
     /** @return string[] */
+    public function GetTagPrefixes() {
+        return $this->response->OK($this->db->GetStrings("SELECT DISTINCT LEFT(UPPER(name), 1) FROM tag ORDER BY name ASC"));
+    }
+    /** @return BQTag[] */
+    public function GetTagBrowse(string $prefix, ?int $offset = 0, ?int $pageSize = 10) {
+        $page = $offset * $pageSize;
+        $whereQuery = ""; $whereParams = [];
+        if($prefix !== "all") {
+            $whereQuery = "WHERE name LIKE :t";
+            $whereParams = ["t" => "$prefix%"];
+        }
+        return $this->response->OK($this->db->GetObjects("BQTag",
+            "SELECT t.name, COUNT(at.answer) AS answers
+             FROM tag t
+                 INNER JOIN answer_tag at ON t.id = at.tag
+             $whereQuery
+             GROUP BY t.name
+             ORDER BY t.name ASC
+             LIMIT $page, $pageSize", $whereParams));
+    }
+    /** @return string[] */
     public function GetTags(string $type, ?int $offset = 0, ?int $pageSize = 10) {
         $page = $offset * $pageSize;
         $whereQuery = ""; $whereParams = []; $orderBy = "";
