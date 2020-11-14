@@ -25,10 +25,19 @@ class BQUserToken extends BeeUserToken {
     public BQUser $bquser;
 }
 class BQUser {
+    public int $beeauthid;
     public string $displayname;
     public string $joined;
-    public int $score;
-    public int $level;
+    public string $lastlogin;
+    public int $score = 100;
+    public int $level = 2;
+    public int $questionsPerDay = 9;
+    public int $answersPerDay = 3;
+    public int $questionsAsked = 0;
+    public int $answersGiven = 0;
+    public ?string $blockdate;
+    public string $source;
+    public string $sourcename;
 }
 /* #endregion */
 /* #region Answers */

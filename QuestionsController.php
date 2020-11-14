@@ -64,7 +64,19 @@ class QuestionsController extends BeeController {
         }
     }
     private function GetOrCreateBQUserAndReturnResponse(BeeAuth $auth, BeeUserToken $userInfo) {
-        $bqdbUser = $this->db->GetObject("BQUser", "SELECT displayname, joined, score, level FROM users WHERE beeauthid = :id", ["id" => $userInfo->id]);
+        $bqdbUser = $this->db->GetObject("BQUser",
+            "SELECT u.beeauthid, u.displayname, u.joined, u.score, u.level, l.questionsPerDay, l.answersPerDay,
+                COUNT(DISTINCT q.id) AS questionsAsked, COUNT(DISTINCT a.id) AS answersGiven, CASE
+                    WHEN u.blockeduntil IS NULL THEN NULL
+                    WHEN u.blockeduntil < NOW() THEN NULL
+                    ELSE u.blockeduntil
+                END AS blockdate
+            FROM users u
+                INNER JOIN userlevel l ON u.level = l.level
+                LEFT JOIN question q ON q.user = u.id AND DAY(q.posted) = DAY(NOW())
+                LEFT JOIN answer a ON a.user = u.id AND DAY(a.opened) = DAY(NOW())
+            WHERE u.beeauthid = :i
+            GROUP BY u.beeauthid, u.displayname, u.joined, u.score, u.level, l.questionsperday, l.answersperday", ["i" => $userInfo->id]);
         $isNew = false;
         if($bqdbUser == null) { // BeeAuth User Only
             $isNew = true;
@@ -72,6 +84,19 @@ class QuestionsController extends BeeController {
         } else {
             $this->db->ExecuteNonQuery("UPDATE users SET lastlogin = NOW() WHERE id = :id", ["id" => $userInfo->id]);
         }
+        $authdb = new BeeDB("auth");
+        $sourceInfo = $authdb->GetDataRow(
+            "SELECT IFNULL(source, 'email') AS source,
+                CASE
+                    WHEN source = 'twitter' THEN externalname
+                    ELSE username
+                END AS name
+            FROM users
+            WHERE id = :i", ["i" => $bqdbUser->beeauthid]);
+        $bqdbUser->source = $sourceInfo["source"];
+        $bqdbUser->sourcename = $sourceInfo["name"];
+        $bqdbUser->lastlogin = date(DATE_ATOM);
+        unset($bqdbUser->beeauthid);
         $token = $this->GenerateUserToken($auth, $userInfo);
         return $this->response->Custom([
             "token" => $token,
@@ -92,8 +117,7 @@ class QuestionsController extends BeeController {
         $u = new BQUser();
         $u->displayname = $displayname;
         $u->joined = date(DATE_ATOM);
-        $u->score = 100;
-        $u->level = 2;
+        $u->beeauthid = $beeAuthID;
         return $u;
     }
     private function GenerateUserToken(BeeAuth $auth, BeeUserToken $but):string {
@@ -259,7 +283,7 @@ class QuestionsController extends BeeController {
                 INNER JOIN userlevel l ON u.level = l.level
                 LEFT JOIN question q ON q.user = u.id AND DAY(q.posted) = DAY(NOW())
             WHERE u.id = :i
-                AND (u.noquestionsuntil IS NULL OR NOW() > u.noquestionsuntil)
+                AND (u.blockeduntil IS NULL OR NOW() > u.blockeduntil)
             GROUP BY u.id, l.questionsperday
             HAVING COUNT(q.id) < l.questionsperday", ["i" => $tokenID]);
         if(empty($userID)) { return $this->response->Error("You can't ask any more questions today. Try again tomorrow!"); }
@@ -410,6 +434,22 @@ class QuestionsController extends BeeController {
         }
         $this->db->ExecuteNonQuery("UPDATE users SET displayname = :u WHERE id = :i", ["u" => $newName, "i" => $userID]);
         return $this->response->OK(true);
+    }
+    public function GetAdditionalUserInfo() {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Unauthorized("Please log in to access this functionality."); }
+        $totalCounts = $this->db->GetDataRow(
+            "SELECT u.displayname, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT aux.answer) AS answerLikes, 
+                COUNT(DISTINCT qux.question) AS questionLikes, COUNT(DISTINCT ba.id) AS bestQuestions
+            FROM users u
+                LEFT JOIN answer a ON a.user = u.id
+                LEFT JOIN question q ON q.user = u.id
+                LEFT JOIN answer ba ON q.id = ba.bestquestion
+                LEFT JOIN answer_user_likes aux ON aux.user = u.id
+                LEFT JOIN question_user_likes qux ON qux.user = u.id
+            WHERE u.id = :i
+            GROUP BY u.id", ["i" => $userID]);
+        $this->response->OK($totalCounts);
     }
     /* #endregion */
     /* #region Helpers */

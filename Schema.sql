@@ -49,8 +49,7 @@ CREATE TABLE `bqdb`.`users` (
   `lastlogin` DATETIME NOT NULL,
   `score` INT NOT NULL DEFAULT 100,
   `level` INT NOT NULL DEFAULT 2,
-  `noquestionsuntil` DATETIME NULL,
-  `noanswersuntil` DATETIME NULL,
+  `blockeduntil` DATETIME NULL
   PRIMARY KEY (`id`));
 
 CREATE TABLE `bqdb`.`userlevel` (
