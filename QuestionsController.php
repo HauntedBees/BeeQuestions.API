@@ -488,6 +488,15 @@ class QuestionsController extends BeeController {
         ]);
         return $this->response->OK(true);
     }
+    public function PostPasswordChange(BeePasswordChange $vals) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Unauthorized("Please log in to change your password."); }
+        $beeAuthID = $this->db->GetInt("SELECT beeauthid FROM users WHERE id = :i", ["i" => $userID]);
+        if($beeAuthID === 0 || $beeAuthID === null) { return $this->response->Error("Could not find user."); }
+        $auth = new BeeAuth();
+        $auth->ResetPassword($beeAuthID, $vals);
+        return $this->response->Message("Password changed successfully.");
+    }
     /* #endregion */
     /* #region Helpers */
     private function GetUserIdFromDisplayName(string $displayName):int {
