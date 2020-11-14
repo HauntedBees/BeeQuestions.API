@@ -13,4 +13,4 @@ Bee Questions is licensed with the [GNU Affero General Public License](https://w
 It's not done yet gimme a minute.
 
 ## setup
-See the [BeeAPI Setup](https://github.com/HauntedBees/BeeAPI#setup) to set up BeeAPI. See the steps above in the [dependencies](#dependencies) section for adding the Bee Questions! Module to it.
+See the [BeeAPI Setup](https://github.com/HauntedBees/BeeAPI#setup) to set up BeeAPI. See the steps above in the [dependencies](#dependencies) section for adding the Bee Questions! Module to it. Additionally, there should be a `badwords.txt` file present in the `Questions` directory, containing one regular expression per line (without the /'s around it) that - if present in user input - will block the input from being pushed to the database. This file is not provided in the repository because I don't want a text file full of slurs here.
