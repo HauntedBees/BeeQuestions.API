@@ -65,7 +65,7 @@ class QuestionsController extends BeeController {
     }
     private function GetOrCreateBQUserAndReturnResponse(BeeAuth $auth, BeeUserToken $userInfo) {
         $bqdbUser = $this->db->GetObject("BQUser",
-            "SELECT u.beeauthid, u.displayname, u.joined, u.score, u.level, l.questionsPerDay, l.answersPerDay,
+            "SELECT u.beeauthid, u.emoji, u.color, u.displayname, u.joined, u.score, u.level, l.questionsPerDay, l.answersPerDay,
                 COUNT(DISTINCT q.id) AS questionsAsked, COUNT(DISTINCT a.id) AS answersGiven, CASE
                     WHEN u.blockeduntil IS NULL THEN NULL
                     WHEN u.blockeduntil < NOW() THEN NULL
@@ -109,14 +109,24 @@ class QuestionsController extends BeeController {
         $nameParts2 = ["Captain", "Nerd", "Machine", "Snack", "Ball", "Bat", "Bell", "Tree", "Plate", "Bowl", "Tuesdays", "Leader", "Bee", "Punk"];
         $displayname = $nameParts1[array_rand($nameParts1)].$nameParts2[array_rand($nameParts2)].random_int(100000, 999999);
         $username = "beeauthuser$beeAuthID";
-        $this->db->ExecuteNonQuery("INSERT INTO users (beeauthid, name, displayname, joined, lastlogin, score, level) VALUES (:si, :un, :dn, NOW(), NOW(), 100, 2)", [
+
+        $starterEmojis = ["1F476", "1F41D", "1F36F", "1F438", "1F423", "1F95F", "1F989", "1F431", "1F436"];
+        $myEmoji = $starterEmojis[array_rand($starterEmojis)];
+        $myColor = "#4B0082";
+
+        $this->db->ExecuteNonQuery(
+            "INSERT INTO users (beeauthid, name, displayname, joined, lastlogin, emoji, color, score, level) VALUES (:si, :un, :dn, NOW(), NOW(), :em, :cl, 100, 2)", [
             "si" => $beeAuthID,
             "dn" => $displayname,
+            "cl" => $myColor,
+            "em" => $myEmoji,
             "un" => $username
         ]);
         $u = new BQUser();
         $u->displayname = $displayname;
         $u->joined = date(DATE_ATOM);
+        $u->emoji = $myEmoji;
+        $u->color = $myColor;
         $u->beeauthid = $beeAuthID;
         return $u;
     }
@@ -428,6 +438,7 @@ class QuestionsController extends BeeController {
         $userID = $this->GetMaybeUserId();
         if($userID === 0) { return $this->response->Unauthorized("Please log in to change your display name."); }
         $newName = $this->ValidateText($newName);
+        if(strlen($newName) > 30) { return $this->response->Error("Please, no super-long names."); }
         $alreadyExists = $this->db->GetBool("SELECT COUNT(*) FROM users WHERE displayname = :u", ["u" => $newName]);
         if($alreadyExists) {
             return $this->response->Error("Another user already has this display name. :(");
@@ -453,7 +464,7 @@ class QuestionsController extends BeeController {
     }
     public function GetUserProfile(string $displayName) {
         $totalCounts = $this->db->GetDataRow(
-            "SELECT u.displayname, u.level, u.score, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT aux.answer) AS answerLikes, 
+            "SELECT u.displayname, u.emoji, u.color, u.level, u.score, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT aux.answer) AS answerLikes, 
                 COUNT(DISTINCT qux.question) AS questionLikes, COUNT(DISTINCT ba.id) AS bestQuestions
             FROM users u
                 LEFT JOIN answer a ON a.user = u.id
@@ -464,6 +475,18 @@ class QuestionsController extends BeeController {
             WHERE u.displayname = :d
             GROUP BY u.id", ["d" => $displayName]);
         $this->response->OK($totalCounts);
+    }
+    public function PostUserAvatar(BQAvatarChange $vals) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Unauthorized("Please log in to change your avatar."); }
+        if(!preg_match("/^1F[0-9A-F]{3}$/", $vals->avatar)) { return $this->response->Error("Invalid avatar."); }
+        if(!preg_match("/^#[0-9A-F]{6}$/", $vals->color)) { return $this->response->Error("Invalid color."); }
+        $this->db->ExecuteNonQuery("UPDATE users SET emoji = :e, color = :c WHERE id = :i", [
+            "i" => $userID,
+            "e" => $vals->avatar,
+            "c" => $vals->color
+        ]);
+        return $this->response->OK(true);
     }
     /* #endregion */
     /* #region Helpers */

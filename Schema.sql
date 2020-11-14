@@ -47,6 +47,8 @@ CREATE TABLE `bqdb`.`users` (
   `displayname` VARCHAR(100) NULL,
   `joined` DATETIME NOT NULL,
   `lastlogin` DATETIME NOT NULL,
+  `emoji` VARCHAR(10) NULL,
+  `color` VARCHAR(10) NULL,
   `score` INT NOT NULL DEFAULT 100,
   `level` INT NOT NULL DEFAULT 2,
   `blockeduntil` DATETIME NULL

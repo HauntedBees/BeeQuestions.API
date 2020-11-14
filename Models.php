@@ -32,6 +32,8 @@ class BQUser {
     public int $beeauthid;
     public string $displayname;
     public string $joined;
+    public string $emoji;
+    public string $color;
     public string $lastlogin;
     public int $score = 100;
     public int $level = 2;
@@ -42,6 +44,10 @@ class BQUser {
     public ?string $blockdate;
     public string $source;
     public string $sourcename;
+}
+class BQAvatarChange {
+    public string $avatar;
+    public string $color;
 }
 /* #endregion */
 /* #region Answers */
