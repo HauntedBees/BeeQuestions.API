@@ -82,7 +82,7 @@ class QuestionsController extends BeeController {
     private function CreateBQUser(int $beeAuthID):BQUser {
         $nameParts1 = ["Football", "Computer", "Space", "Granola", "Hockey", "Baseball", "Taco", "Banana", "Pasta", "Soup", "Bread", "Ska", "Bee", "Punk"];
         $nameParts2 = ["Captain", "Nerd", "Machine", "Snack", "Ball", "Bat", "Bell", "Tree", "Plate", "Bowl", "Tuesdays", "Leader", "Bee", "Punk"];
-        $displayname = $nameParts1[array_rand($nameParts1)].$nameParts2[array_rand($nameParts2)].rand(1000, 9999);
+        $displayname = $nameParts1[array_rand($nameParts1)].$nameParts2[array_rand($nameParts2)].random_int(100000, 999999);
         $username = "beeauthuser$beeAuthID";
         $this->db->ExecuteNonQuery("INSERT INTO users (beeauthid, name, displayname, joined, lastlogin, score, level) VALUES (:si, :un, :dn, NOW(), NOW(), 100, 2)", [
             "si" => $beeAuthID,
@@ -102,7 +102,7 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region Answers */
-     /** @return BQAnswer */
+    /** @return BQAnswer */
      public function GetAnswer(string $answerURL) {
         $userID = $this->GetMaybeUserId();
         $answer = $this->db->GetObject("BQFullAnswer", 
@@ -375,6 +375,20 @@ class QuestionsController extends BeeController {
                  LIMIT $page, $pageSize");
         }
         return $this->response->OK($res);
+    }
+    /* #endregion */
+    /* #region User */
+    /** @return bool */
+    public function PostDisplayName(string $newName) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Unauthorized("Please log in to change your display name."); }
+        $newName = $this->ValidateText($newName);
+        $alreadyExists = $this->db->GetBool("SELECT COUNT(*) FROM users WHERE displayname = :u", ["u" => $newName]);
+        if($alreadyExists) {
+            return $this->response->Error("Another user already has this display name. :(");
+        }
+        $this->db->ExecuteNonQuery("UPDATE users SET displayname = :u WHERE id = :i", ["u" => $newName, "i" => $userID]);
+        return $this->response->OK(true);
     }
     /* #endregion */
     /* #region Helpers */
