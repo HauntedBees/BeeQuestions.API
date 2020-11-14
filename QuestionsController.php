@@ -102,58 +102,46 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region Answers */
-    /** @return BQQuestion[] */
-    public function PostQuestion(BQPostedQuestion $question) {
-        $tokenID = $this->GetMaybeUserId();
-        if($tokenID === 0) { return $this->response->Unauthorized("Please log in to ask questions."); }
-
-        $userID = $this->db->GetInt(
-            "SELECT u.id
-            FROM users u
-                INNER JOIN userlevel l ON u.level = l.level
-                LEFT JOIN question q ON q.user = u.id AND DAY(q.posted) = DAY(NOW())
-            WHERE u.id = :i
-                AND (u.noquestionsuntil IS NULL OR NOW() > u.noquestionsuntil)
-            GROUP BY u.id, l.questionsperday
-            HAVING COUNT(q.id) < l.questionsperday", ["i" => $tokenID]);
-        if(empty($userID)) { return $this->response->Error("You can't ask any more questions today. Try again tomorrow!"); }
-        
-        if(empty($question->question)) { return $this->response->Error("Please enter a question."); }
-        if(strlen($question->question) > 500) { return $this->response->Error("Questions can not exceed 500 characters."); }
-        if(empty($question->answer)) { $this->response->Error("Invalid answer."); }
-        $answerID = $this->db->GetInt("SELECT id FROM answer WHERE url = :i AND status = 0", ["i" => $question->answer]);
-        if(empty($answerID)) { $this->response->Error("Invalid answer."); }
-
-        $question->question = $this->ValidateText($question->question);
-        $this->db->InsertAndReturnID("INSERT INTO question (answer, user, question, posted, score) VALUES (:a, :u, :q, NOW(), 0)", [
-            "a" => $answerID,
-            "u" => $userID,
-            "q" => $question->question
-        ]);
-        return $this->response->OK($this->GetQuestions($answerID, $userID));
+     /** @return BQAnswer */
+     public function GetAnswer(string $answerURL) {
+        $userID = $this->GetMaybeUserId();
+        $answer = $this->db->GetObject("BQFullAnswer", 
+            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion
+            FROM answer a
+                INNER JOIN users u ON a.user = u.id
+            WHERE a.url = :id", ["id" => $answerURL]);
+        if($answer === null) { throw new Exception("Answer not found."); }
+        $answer->tags = $this->db->GetStrings("SELECT t.name FROM tag t INNER JOIN answer_tag atx ON t.id = atx.tag WHERE atx.answer = :id", ["id" => $answer->id]);
+        if($userID > 0) {
+            $answer->liked = $this->db->GetBool("SELECT COUNT(*) FROM answer_user_likes WHERE answer = :a AND user = :u", ["a" => $answer->id, "u" => $userID]);
+        }
+        $answer->questions = $this->GetQuestions($answer->id, $userID);
+        unset($answer->id);
+        return $this->response->OK($answer);
     }
     /** @return bool */
-    public function PostQuestionLikeToggle(int $questionID) {
+    public function PostAnswerLikeToggle(string $answerURL) {
+        $answerID = $this->FindAnswerID($answerURL);
         try {
             $this->db->BeginTransaction();
             $tokenID = $this->GetMaybeUserId();
-            if($tokenID === 0) { return $this->response->Unauthorized("Please log in to like questions."); }
-            $hasQuestionLike = $this->db->GetBool("SELECT COUNT(*) FROM question_user_likes WHERE question = :q AND user = :u", ["q" => $questionID, "u" => $tokenID]);
-            if($hasQuestionLike) {
-                $this->db->ExecuteNonQuery("DELETE FROM question_user_likes WHERE question = :q AND user = :u", ["q" => $questionID, "u" => $tokenID]);
-                $this->db->ExecuteNonQuery("UPDATE question SET score = score - 1 WHERE id = :q", ["q" => $questionID]);
+            if($tokenID === 0) { return $this->response->Unauthorized("Please log in to bookmark posts."); }
+            $hasAnswerLike = $this->db->GetBool("SELECT COUNT(*) FROM answer_user_likes WHERE answer = :a AND user = :u", ["a" => $answerID, "u" => $tokenID]);
+            if($hasAnswerLike) {
+                $this->db->ExecuteNonQuery("DELETE FROM answer_user_likes WHERE answer = :a AND user = :u", ["a" => $answerID, "u" => $tokenID]);
+                $this->db->ExecuteNonQuery("UPDATE answer SET score = score - 1 WHERE id = :a", ["a" => $answerID]);
             } else {
-                $this->db->ExecuteNonQuery("INSERT INTO question_user_likes (question, user) VALUES (:q, :u)", ["q" => $questionID, "u" => $tokenID]);
-                $this->db->ExecuteNonQuery("UPDATE question SET score = score + 1 WHERE id = :q", ["q" => $questionID]);
+                $this->db->ExecuteNonQuery("INSERT INTO answer_user_likes (answer, user) VALUES (:a, :u)", ["a" => $answerID, "u" => $tokenID]);
+                $this->db->ExecuteNonQuery("UPDATE answer SET score = score + 1 WHERE id = :a", ["a" => $answerID]);
             }
             $this->db->CommitTransaction();
-            return $this->response->OK(!$hasQuestionLike);
+            return $this->response->OK(!$hasAnswerLike);
         } catch(Throwable $e) {
             $this->db->RollbackTransaction();
             throw $e;
         }
     }
-
+    
     /** @return BQAnswer[] */
     public function GetHomePageAnswers(int $type, ?int $offset = 0, ?int $pageSize = 10) {
         [$whereQuery, $orderBy] = $this->GetWhereAndOrderQueries($type);
@@ -214,19 +202,65 @@ class QuestionsController extends BeeController {
         }
         return [$whereQuery, $orderBy];
     }
-    /** @return BQAnswer */
-    public function GetAnswer(string $answerURL) {
-        $userID = $this->GetMaybeUserId();
-        $answer = $this->db->GetObject("BQFullAnswer", 
-            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion
-            FROM answer a
-                INNER JOIN users u ON a.user = u.id
-            WHERE a.url = :id", ["id" => $answerURL]);
-        if($answer === null) { throw new Exception("Answer not found."); }
-        $answer->tags = $this->db->GetStrings("SELECT t.name FROM tag t INNER JOIN answer_tag atx ON t.id = atx.tag WHERE atx.answer = :id", ["id" => $answer->id]);
-        $answer->questions = $this->GetQuestions($answer->id, $userID);
-        unset($answer->id);
-        return $this->response->OK($answer);
+    private function CreateID(int $id, string $prefix=""):string {
+        $suffix = random_int(1000, 9999999);
+        return base64_encode("$prefix$id-$suffix");
+    }
+    private function FindAnswerID(string $url):int {
+        return $this->db->GetInt("SELECT id FROM answer WHERE url = :u", ["u" => $url]);
+    }
+    /* #endregion */
+    /* #region Questions */
+    /** @return BQQuestion[] */
+    public function PostQuestion(BQPostedQuestion $question) {
+        $tokenID = $this->GetMaybeUserId();
+        if($tokenID === 0) { return $this->response->Unauthorized("Please log in to ask questions."); }
+
+        $userID = $this->db->GetInt(
+            "SELECT u.id
+            FROM users u
+                INNER JOIN userlevel l ON u.level = l.level
+                LEFT JOIN question q ON q.user = u.id AND DAY(q.posted) = DAY(NOW())
+            WHERE u.id = :i
+                AND (u.noquestionsuntil IS NULL OR NOW() > u.noquestionsuntil)
+            GROUP BY u.id, l.questionsperday
+            HAVING COUNT(q.id) < l.questionsperday", ["i" => $tokenID]);
+        if(empty($userID)) { return $this->response->Error("You can't ask any more questions today. Try again tomorrow!"); }
+        
+        if(empty($question->question)) { return $this->response->Error("Please enter a question."); }
+        if(strlen($question->question) > 500) { return $this->response->Error("Questions can not exceed 500 characters."); }
+        if(empty($question->answer)) { $this->response->Error("Invalid answer."); }
+        $answerID = $this->db->GetInt("SELECT id FROM answer WHERE url = :i AND status = 0", ["i" => $question->answer]);
+        if(empty($answerID)) { $this->response->Error("Invalid answer."); }
+
+        $question->question = $this->ValidateText($question->question);
+        $this->db->InsertAndReturnID("INSERT INTO question (answer, user, question, posted, score) VALUES (:a, :u, :q, NOW(), 0)", [
+            "a" => $answerID,
+            "u" => $userID,
+            "q" => $question->question
+        ]);
+        return $this->response->OK($this->GetQuestions($answerID, $userID));
+    }
+    /** @return bool */
+    public function PostQuestionLikeToggle(int $questionID) {
+        try {
+            $this->db->BeginTransaction();
+            $tokenID = $this->GetMaybeUserId();
+            if($tokenID === 0) { return $this->response->Unauthorized("Please log in to like questions."); }
+            $hasQuestionLike = $this->db->GetBool("SELECT COUNT(*) FROM question_user_likes WHERE question = :q AND user = :u", ["q" => $questionID, "u" => $tokenID]);
+            if($hasQuestionLike) {
+                $this->db->ExecuteNonQuery("DELETE FROM question_user_likes WHERE question = :q AND user = :u", ["q" => $questionID, "u" => $tokenID]);
+                $this->db->ExecuteNonQuery("UPDATE question SET score = score - 1 WHERE id = :q", ["q" => $questionID]);
+            } else {
+                $this->db->ExecuteNonQuery("INSERT INTO question_user_likes (question, user) VALUES (:q, :u)", ["q" => $questionID, "u" => $tokenID]);
+                $this->db->ExecuteNonQuery("UPDATE question SET score = score + 1 WHERE id = :q", ["q" => $questionID]);
+            }
+            $this->db->CommitTransaction();
+            return $this->response->OK(!$hasQuestionLike);
+        } catch(Throwable $e) {
+            $this->db->RollbackTransaction();
+            throw $e;
+        }
     }
     private function GetQuestions(int $answerID, int $userID):array {
         return $this->db->GetObjects("BQQuestion", 
@@ -236,10 +270,6 @@ class QuestionsController extends BeeController {
                 LEFT JOIN question_user_likes x ON x.question = q.id AND x.user = $userID
             WHERE q.answer = :id
             GROUP BY q.id", ["id" => $answerID]);
-    }
-    private function CreateID(int $id, string $prefix=""):string {
-        $suffix = random_int(1000, 9999999);
-        return base64_encode("$prefix$id-$suffix");
     }
     /* #endregion */
     /* #region Tags */
