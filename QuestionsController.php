@@ -451,6 +451,20 @@ class QuestionsController extends BeeController {
             GROUP BY u.id", ["i" => $userID]);
         $this->response->OK($totalCounts);
     }
+    public function GetUserProfile(string $displayName) {
+        $totalCounts = $this->db->GetDataRow(
+            "SELECT u.displayname, u.level, u.score, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT aux.answer) AS answerLikes, 
+                COUNT(DISTINCT qux.question) AS questionLikes, COUNT(DISTINCT ba.id) AS bestQuestions
+            FROM users u
+                LEFT JOIN answer a ON a.user = u.id
+                LEFT JOIN question q ON q.user = u.id
+                LEFT JOIN answer ba ON q.id = ba.bestquestion
+                LEFT JOIN answer_user_likes aux ON aux.user = u.id
+                LEFT JOIN question_user_likes qux ON qux.user = u.id
+            WHERE u.displayname = :d
+            GROUP BY u.id", ["d" => $displayName]);
+        $this->response->OK($totalCounts);
+    }
     /* #endregion */
     /* #region Helpers */
     private function GetUserIdFromDisplayName(string $displayName):int {
