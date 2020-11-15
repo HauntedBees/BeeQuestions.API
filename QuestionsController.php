@@ -144,7 +144,7 @@ class QuestionsController extends BeeController {
     /* #region Answers */
     public function PostAnswer(BQPostedAnswer $answer) {
         $tokenID = $this->GetMaybeUserId();
-        if($tokenID === 0) { return $this->response->Unauthorized("Please log in to post answers."); }
+        if($tokenID === 0) { return $this->HandleUnauthorizedAction("Please log in to post answers."); }
 
         $userID = $this->db->GetInt(
             "SELECT u.id
@@ -217,7 +217,7 @@ class QuestionsController extends BeeController {
         try {
             $this->db->BeginTransaction();
             $tokenID = $this->GetMaybeUserId();
-            if($tokenID === 0) { return $this->response->Unauthorized("Please log in to bookmark posts."); }
+            if($tokenID === 0) { return $this->HandleUnauthorizedAction("Please log in to bookmark posts."); }
             $hasAnswerLike = $this->db->GetBool("SELECT COUNT(*) FROM answer_user_likes WHERE answer = :a AND user = :u", ["a" => $answerID, "u" => $tokenID]);
             if($hasAnswerLike) {
                 $this->db->ExecuteNonQuery("DELETE FROM answer_user_likes WHERE answer = :a AND user = :u", ["a" => $answerID, "u" => $tokenID]);
@@ -342,7 +342,7 @@ class QuestionsController extends BeeController {
     /** @return BQQuestion[] */
     public function PostQuestion(BQPostedQuestion $question) {
         $tokenID = $this->GetMaybeUserId();
-        if($tokenID === 0) { return $this->response->Unauthorized("Please log in to ask questions."); }
+        if($tokenID === 0) { return $this->HandleUnauthorizedAction("Please log in to ask questions."); }
 
         $userID = $this->db->GetInt(
             "SELECT u.id
@@ -379,7 +379,7 @@ class QuestionsController extends BeeController {
         try {
             $this->db->BeginTransaction();
             $tokenID = $this->GetMaybeUserId();
-            if($tokenID === 0) { return $this->response->Unauthorized("Please log in to like questions."); }
+            if($tokenID === 0) { return $this->HandleUnauthorizedAction("Please log in to like questions."); }
             $hasQuestionLike = $this->db->GetBool("SELECT COUNT(*) FROM question_user_likes WHERE question = :q AND user = :u", ["q" => $questionID, "u" => $tokenID]);
             if($hasQuestionLike) {
                 $this->db->ExecuteNonQuery("DELETE FROM question_user_likes WHERE question = :q AND user = :u", ["q" => $questionID, "u" => $tokenID]);
@@ -513,7 +513,7 @@ class QuestionsController extends BeeController {
     /** @return bool */
     public function PostReport(BQReport $report) {
         $userID = $this->GetMaybeUserId();
-        if($userID === 0) { return $this->response->Unauthorized("Please log in to flag content."); }
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to flag content."); }
         $realID = 0;
         $column = "";
         switch($report->type) {
@@ -537,7 +537,7 @@ class QuestionsController extends BeeController {
     /** @return bool */
     public function PostDisplayName(string $newName) {
         $userID = $this->GetMaybeUserId();
-        if($userID === 0) { return $this->response->Unauthorized("Please log in to change your display name."); }
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to change your display name."); }
         $newName = $this->ValidateText($newName);
         if(mb_strlen($newName) > 30) { return $this->response->Error("Please, no super-long names."); }
         $alreadyExists = $this->db->GetBool("SELECT COUNT(*) FROM users WHERE displayname = :u", ["u" => $newName]);
@@ -549,7 +549,7 @@ class QuestionsController extends BeeController {
     }
     public function GetAdditionalUserInfo() {
         $userID = $this->GetMaybeUserId();
-        if($userID === 0) { return $this->response->Unauthorized("Please log in to access this functionality."); }
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to access this functionality."); }
         $totalCounts = $this->db->GetDataRow(
             "SELECT u.displayname, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT aux.answer) AS answerLikes, 
                 COUNT(DISTINCT qux.question) AS questionLikes, COUNT(DISTINCT ba.id) AS bestQuestions
@@ -576,7 +576,7 @@ class QuestionsController extends BeeController {
     }
     public function PostUserAvatar(BQAvatarChange $vals) {
         $userID = $this->GetMaybeUserId();
-        if($userID === 0) { return $this->response->Unauthorized("Please log in to change your avatar."); }
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to change your avatar."); }
         if(!preg_match("/^1F[0-9A-F]{3}$/", $vals->avatar)) { return $this->response->Error("Invalid avatar."); }
         if(!preg_match("/^#[0-9A-F]{6}$/", $vals->color)) { return $this->response->Error("Invalid color."); }
         $this->db->ExecuteNonQuery("UPDATE users SET emoji = :e, color = :c WHERE id = :i", [
@@ -588,7 +588,7 @@ class QuestionsController extends BeeController {
     }
     public function PostPasswordChange(BeePasswordChange $vals) {
         $userID = $this->GetMaybeUserId();
-        if($userID === 0) { return $this->response->Unauthorized("Please log in to change your password."); }
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to change your password."); }
         $beeAuthID = $this->db->GetInt("SELECT beeauthid FROM users WHERE id = :i", ["i" => $userID]);
         if($beeAuthID === 0 || $beeAuthID === null) { return $this->response->Error("Could not find user."); }
         $auth = new BeeAuth();
@@ -658,8 +658,18 @@ class QuestionsController extends BeeController {
         try {
             $token = $auth->GetToken("BeeUserToken");
             return $token->id;
+        } catch(BeeSessionExpiredException $o) {
+            $this->response->addSessionExpiredMessage = true;
+            return 0;
         } catch(Exception $ex) {
             return 0;
+        }
+    }
+    private function HandleUnauthorizedAction(string $message) {
+        if($this->response->addSessionExpiredMessage) {
+            return $this->response->Unauthorized("Your session has expired. ".str_replace("log in", "log back in", $message));
+        } else {
+            return $this->response->Unauthorized($message);
         }
     }
     private function ValidateText(string $origStr):string { // TODO: ensure the TRANSLIT works on live site
