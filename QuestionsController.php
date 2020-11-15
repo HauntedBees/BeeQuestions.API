@@ -149,7 +149,7 @@ class QuestionsController extends BeeController {
         $this->PostCloseAnswers(false);
         $userID = $this->GetMaybeUserId();
         $answer = $this->db->GetObject("BQFullAnswer", 
-            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion,
+            "SELECT a.id, u.displayname AS author, u.emoji AS authoremoji, u.color AS authorcolor, a.answer, a.status, a.opened, a.closed, a.bestquestion,
                 DATE_ADD(a.opened, INTERVAL $this->answerDays DAY) AS closedate, (u.id = $userID) AS yours
             FROM answer a
                 INNER JOIN users u ON a.user = u.id
@@ -385,7 +385,8 @@ class QuestionsController extends BeeController {
     }
     private function GetQuestions(int $answerID, int $userID):array {
         return $this->db->GetObjects("BQQuestion", 
-            "SELECT q.id, u.displayname AS author, q.question, q.posted, q.score, COUNT(x.user) AS liked, (q.user = $userID) AS yours, (q.id = a.bestquestion) AS winner
+            "SELECT q.id, u.displayname AS author, u.emoji AS authoremoji, u.color AS authorcolor, q.question, q.posted, q.score,
+                    COUNT(x.user) AS liked, (q.user = $userID) AS yours, (q.id = a.bestquestion) AS winner
             FROM question q
                 INNER JOIN users u ON q.user = u.id
                 INNER JOIN answer a ON q.answer = a.id
@@ -454,10 +455,10 @@ class QuestionsController extends BeeController {
         $userID = $this->GetMaybeUserId();
         if($userID === 0) { return $this->response->Unauthorized("Please log in to change your display name."); }
         $newName = $this->ValidateText($newName);
-        if(strlen($newName) > 30) { return $this->response->Error("Please, no super-long names."); }
+        if(mb_strlen($newName) > 30) { return $this->response->Error("Please, no super-long names."); }
         $alreadyExists = $this->db->GetBool("SELECT COUNT(*) FROM users WHERE displayname = :u", ["u" => $newName]);
         if($alreadyExists) {
-            return $this->response->Error("Another user already has this display name. :(");
+            return $this->response->Error("Another user already has the display name '$newName'. :(");
         }
         $this->db->ExecuteNonQuery("UPDATE users SET displayname = :u WHERE id = :i", ["u" => $newName, "i" => $userID]);
         return $this->response->OK(true);
@@ -580,8 +581,9 @@ class QuestionsController extends BeeController {
             return 0;
         }
     }
-    private function ValidateText(string $origStr):string { // TODO: ensure the ISO-8859-1//TRANSLIT works on live site
-        $str = strtolower(iconv("UTF-8", "ISO-8859-1//TRANSLIT", $origStr));
+    private function ValidateText(string $origStr):string { // TODO: ensure the TRANSLIT works on live site
+        $str = iconv("UTF-8", "ASCII//TRANSLIT", $origStr);
+        $str = strtolower($str === false ? iconv("UTF-8", "ASCII//IGNORE", $origStr) : $str); // for local
         $str = preg_replace("/-/", "", $str);
         $str = preg_replace("/[^a-z0-9]/", " ", $str);
         $str = preg_replace("/\s+/", " ", $str);
@@ -629,7 +631,7 @@ class QuestionsController extends BeeController {
             foreach($badWords as $badWord) { if(preg_match("/$badWord/", $test)) { throw new BeeException("Don't say words like that, come on."); } }
         }
 
-        $origStr = preg_replace("/[\x01-\x1F\x80-\xFF]/", "", $origStr);
+        $origStr = preg_replace('/[\x00-\x1F\x7F]/', "", $origStr);
         return $origStr;
     }
     /* #endregion */

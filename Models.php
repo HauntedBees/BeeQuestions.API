@@ -74,6 +74,8 @@ class BQAnswer {
 class BQFullAnswer {
     public int $id;
     public string $author;
+    public string $authorcolor;
+    public string $authoremoji;
     public string $answer;
     public int $status;
     public array $questions;
@@ -88,6 +90,8 @@ class BQFullAnswer {
 class BQQuestion {
     public int $id;
     public string $author;
+    public string $authorcolor;
+    public string $authoremoji;
     public string $question;
     public string $posted;
     public int $score;

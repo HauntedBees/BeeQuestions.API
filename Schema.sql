@@ -1,9 +1,11 @@
+CREATE DATABASE IF NOT EXISTS `bqdb`
+USE `bqdb`;
 /* #region Base Tables */
 CREATE TABLE `bqdb`.`answer` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `url` VARCHAR(30) NOT NULL,
   `user` BIGINT NOT NULL,
-  `answer` VARCHAR(1000) NOT NULL,
+  `answer` NVARCHAR(1000) NOT NULL,
   `status` INT NOT NULL,
   `opened` DATETIME NOT NULL,
   `changed` DATETIME NOT NULL,
@@ -17,7 +19,7 @@ CREATE TABLE `bqdb`.`answer` (
 
 CREATE TABLE `bqdb`.`tag` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
-  `name` VARCHAR(100) NOT NULL,
+  `name` NVARCHAR(100) NOT NULL,
   PRIMARY KEY (`id`));
 
 CREATE TABLE `bqdb`.`answer_tag` (
@@ -29,7 +31,7 @@ CREATE TABLE `bqdb`.`question` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `answer` BIGINT NOT NULL,
   `user` BIGINT NOT NULL,
-  `question` VARCHAR(2000) NOT NULL,
+  `question` NVARCHAR(2000) NOT NULL,
   `posted` DATETIME NOT NULL,
   `score` INT NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
@@ -43,8 +45,8 @@ CREATE TABLE `bqdb`.`question` (
 CREATE TABLE `bqdb`.`users` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `beeauthid` BIGINT NOT NULL,
-  `name` VARCHAR(100) NOT NULL,
-  `displayname` VARCHAR(100) NULL,
+  `name` NVARCHAR(100) NOT NULL,
+  `displayname` NVARCHAR(100) NULL,
   `joined` DATETIME NOT NULL,
   `lastlogin` DATETIME NOT NULL,
   `emoji` VARCHAR(10) NULL,
@@ -56,8 +58,8 @@ CREATE TABLE `bqdb`.`users` (
 
 CREATE TABLE `bqdb`.`userlevel` (
   `level` INT NOT NULL,
-  `title` VARCHAR(45) NOT NULL,
-  `description` VARCHAR(420) NOT NULL,
+  `title` NVARCHAR(45) NOT NULL,
+  `description` NVARCHAR(420) NOT NULL,
   `scorerequired` INT NOT NULL,
   `answersperday` INT NOT NULL,
   `questionsperday` INT NOT NULL,
