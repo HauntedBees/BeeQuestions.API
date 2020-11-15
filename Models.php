@@ -39,6 +39,7 @@ class BQUser {
     public string $emoji;
     public string $color;
     public string $lastlogin;
+    public int $logindiff;
     public int $score = 100;
     public int $level = 2;
     public int $questionsPerDay = 9;

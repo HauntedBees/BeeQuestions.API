@@ -25,6 +25,7 @@ require_once "autoload.php";
 const NOTIFICATION_ANSWEREND = 1;
 const NOTIFICATION_BESTQUESTION = 2;
 const NOTIFICATION_LEVELUP = 3;
+const SCORE_DAILY_LOGIN = 10;
 const SCORE_BEST_QUESTION = 50;
 const SCORE_RECEIVED_QUESTION = 5;
 const SCORE_GIVE_ANSWER = 2;
@@ -78,7 +79,7 @@ class QuestionsController extends BeeController {
                     WHEN u.blockeduntil IS NULL THEN NULL
                     WHEN u.blockeduntil < NOW() THEN NULL
                     ELSE u.blockeduntil
-                END AS blockdate
+                END AS blockdate, DATEDIFF(NOW(), u.lastlogin) AS logindiff
             FROM users u
                 INNER JOIN userlevel l ON u.level = l.level
                 LEFT JOIN question q ON q.user = u.id AND DAY(q.posted) = DAY(NOW())
@@ -86,11 +87,12 @@ class QuestionsController extends BeeController {
             WHERE u.beeauthid = :i
             GROUP BY u.beeauthid, u.displayname, u.joined, u.score, u.level, l.questionsperday, l.answersperday", ["i" => $userInfo->id]);
         $isNew = false;
-        if($bqdbUser == null) { // BeeAuth User Only
+        if($bqdbUser === null) { // BeeAuth User Only
             $isNew = true;
             $bqdbUser = $this->CreateBQUser($userInfo->id);
         } else {
-            $this->db->ExecuteNonQuery("UPDATE users SET lastlogin = NOW() WHERE id = :id", ["id" => $userInfo->id]);
+            $scoreAmt = $bqdbUser->logindiff > 0 ? SCORE_DAILY_LOGIN : 0;
+            $this->db->ExecuteNonQuery("UPDATE users SET lastlogin = NOW(), score = score + $scoreAmt WHERE beeauthid = :id", ["id" => $userInfo->id]);
         }
         $authdb = new BeeDB("auth");
         $sourceInfo = $authdb->GetDataRow(
