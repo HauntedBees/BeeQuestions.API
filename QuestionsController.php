@@ -512,6 +512,19 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region User */
+    public function GetUpdatedStats() {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->OK(["notLoggedIn" => true]); }
+        return $this->response->OK($this->db->GetDataRow(
+            "SELECT u.score, u.level, u.blockeduntil, l.answersperday AS answersPerDay, l.questionsperday AS questionsPerDay, 
+                COUNT(DISTINCT q.id) AS questionsAsked, COUNT(DISTINCT a.id) AS answersGiven
+            FROM users u
+                INNER JOIN userlevel l ON u.level = l.level
+                LEFT JOIN question q ON q.user = u.id AND q.posted >= DATE_ADD(NOW(), INTERVAL -1 DAY)
+                LEFT JOIN answer a ON a.user = u.id AND a.opened >= DATE_ADD(NOW(), INTERVAL -1 DAY)
+            WHERE u.id = :i
+            GROUP BY u.id", ["i" => $userID]));
+    }
     /** @return bool */
     public function PostReport(BQReport $report) {
         $userID = $this->GetMaybeUserId();
