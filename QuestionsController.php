@@ -554,8 +554,11 @@ class QuestionsController extends BeeController {
         if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to access this functionality."); }
         $totalCounts = $this->db->GetDataRow(
             "SELECT u.displayname, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT aux.answer) AS answerLikes, 
-                COUNT(DISTINCT qux.question) AS questionLikes, COUNT(DISTINCT ba.id) AS bestQuestions
+                COUNT(DISTINCT qux.question) AS questionLikes, COUNT(DISTINCT ba.id) AS bestQuestions, 
+                u.score, l.scorerequired AS lastLevelUp, l2.scorerequired AS nextLevelUp, l.title AS levelTitle, l.description AS levelDesc
             FROM users u
+                INNER JOIN userlevel l ON u.level = l.level
+                LEFT JOIN userlevel l2 ON (u.level + 1) = l2.level
                 LEFT JOIN answer a ON a.user = u.id
                 LEFT JOIN question q ON q.user = u.id
                 LEFT JOIN answer ba ON q.id = ba.bestquestion
@@ -567,8 +570,11 @@ class QuestionsController extends BeeController {
     }
     public function GetUserProfile(string $displayName) {
         $totalCounts = $this->db->GetDataRow(
-            "SELECT u.displayname, u.emoji, u.color, u.level, u.score, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT ba.id) AS bestQuestions
+            "SELECT u.displayname, u.emoji, u.color, u.level, u.score, COUNT(DISTINCT a.id) AS answers, COUNT(DISTINCT q.id) AS questions, COUNT(DISTINCT ba.id) AS bestQuestions,
+                l.scorerequired AS lastLevelUp, l2.scorerequired AS nextLevelUp, l.title AS levelTitle, l.description AS levelDesc
             FROM users u
+                INNER JOIN userlevel l ON u.level = l.level
+                LEFT JOIN userlevel l2 ON (u.level + 1) = l2.level
                 LEFT JOIN answer a ON a.user = u.id
                 LEFT JOIN question q ON q.user = u.id
                 LEFT JOIN answer ba ON q.id = ba.bestquestion
