@@ -109,5 +109,9 @@ class BQPostedQuestion {
     public string $answer;
     public string $question;
 }
+class BQPostedAnswer {
+    public string $answer;
+    public array $tags;
+}
 /* #endregion */
 ?>

@@ -144,8 +144,57 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region Answers */
+    public function PostAnswer(BQPostedAnswer $answer) {
+        $tokenID = $this->GetMaybeUserId();
+        if($tokenID === 0) { return $this->response->Unauthorized("Please log in to post answers."); }
+
+        $userID = $this->db->GetInt(
+            "SELECT u.id
+            FROM users u
+                INNER JOIN userlevel l ON u.level = l.level
+                LEFT JOIN answer a ON a.user = u.id AND a.opened >= DATE_ADD(NOW(), INTERVAL -1 DAY)
+            WHERE u.id = :i
+                AND (u.blockeduntil IS NULL OR NOW() > u.blockeduntil)
+            GROUP BY u.id, l.answersperday
+            HAVING COUNT(a.id) < l.answersperday", ["i" => $tokenID]);
+        if(empty($userID)) { return $this->response->Error("You can't post any more answers today. Try again tomorrow!"); }
+        
+        if(empty($answer->answer)) { return $this->response->Error("Please enter an answer."); }
+        if(count($answer->tags) === 0 || count($answer->tags) > 5) { return $this->response->Error("Please enter between 1 and 5 tags."); }
+        if(strlen($answer->answer) > 500) { return $this->response->Error("Questions can not exceed 500 characters."); }
+
+        $answer->answer = $this->ValidateText($answer->answer);
+        try {
+            $this->db->BeginTransaction();
+            $answerID = $this->db->InsertAndReturnID("INSERT INTO answer (url, user, answer, status, opened) VALUES ('', :u, :a, 0, NOW())", [
+                "u" => $userID, "a" => $answer->answer
+            ]);
+            $url = $this->CreateID($answerID, substr($answer->answer, 0, 2));
+            $this->db->ExecuteNonQuery("UPDATE answer SET url = :u WHERE id = :i", ["i" => $answerID, "u" => $url]);
+
+            $userLevel = $this->db->GetInt("SELECT level FROM users WHERE id = :u", ["u" => $userID]);
+            $tagIDs = [];
+            foreach($answer->tags as $tag) {
+                $tag = substr($tag, 0, 15);
+                $tagID = $this->db->GetInt("SELECT id FROM tag WHERE name = :n", ["n" => $tag]);
+                if($tagID === 0) {
+                    if($userLevel < 3) { throw new Exception("You can't create your own tags until you reach level 3."); }
+                    $tagID = $this->db->InsertAndReturnID("INSERT INTO tag (name) VALUES (:n)", ["n" => $tag]);
+                }
+                $tagIDs[] = $tagID;
+            }
+            $this->db->DoMultipleInsert($answerID, $tagIDs, "INSERT INTO answer_tag (answer, tag) VALUES ");
+
+            $this->AddScore($userID, SCORE_GIVE_ANSWER);
+            $this->db->CommitTransaction();
+            $this->response->OK($url);
+        } catch(Throwable $t) {
+            $this->db->RollbackTransaction();
+            throw $t;
+        }
+    }
     /** @return BQAnswer */
-     public function GetAnswer(string $answerURL) {
+    public function GetAnswer(string $answerURL) {
         $this->PostCloseAnswers(false);
         $userID = $this->GetMaybeUserId();
         $answer = $this->db->GetObject("BQFullAnswer", 
@@ -401,6 +450,19 @@ class QuestionsController extends BeeController {
         return $this->response->OK($this->db->GetStrings("SELECT DISTINCT LEFT(UPPER(name), 1) FROM tag ORDER BY name ASC"));
     }
     /** @return BQTag[] */
+    public function GetAutocompleteTags(string $searchQuery) {
+        if(empty($searchQuery)) {
+            return $this->response->OK($this->db->GetStrings("SELECT t.name FROM tag t ORDER BY RAND() LIMIT 10"));
+        } else {
+            return $this->response->OK($this->db->GetStrings(
+                "SELECT t.name
+                 FROM tag t
+                 WHERE t.name LIKE :q
+                 ORDER BY t.name ASC
+                 LIMIT 10", ["q" => "$searchQuery%"]));
+        }
+    }
+    /** @return BQTag[] */
     public function GetTagBrowse(string $prefix, ?int $offset = 0, ?int $pageSize = 10) {
         $page = $offset * $pageSize;
         $whereQuery = ""; $whereParams = [];
@@ -432,7 +494,7 @@ class QuestionsController extends BeeController {
             "SELECT t.name
              FROM tag t
                  INNER JOIN answer_tag at ON t.id = at.tag
-                 INNER JOIN answer a ON at.answer = a.id AND a.changed > DATE_SUB(NOW(), INTERVAL 1 MONTH)
+                 INNER JOIN answer a ON at.answer = a.id AND a.opened > DATE_SUB(NOW(), INTERVAL 1 MONTH)
              $whereQuery
              GROUP BY t.name
              $orderBy
@@ -629,7 +691,7 @@ class QuestionsController extends BeeController {
         }
 
         $origStr = preg_replace('/[\x00-\x1F\x7F]/', "", $origStr);
-        return $origStr;
+        return trim($origStr);
     }
     /* #endregion */
 }

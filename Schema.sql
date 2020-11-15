@@ -8,7 +8,6 @@ CREATE TABLE `bqdb`.`answer` (
   `answer` NVARCHAR(1000) NOT NULL,
   `status` INT NOT NULL,
   `opened` DATETIME NOT NULL,
-  `changed` DATETIME NOT NULL,
   `closed` DATETIME NULL,
   `views` INT NOT NULL DEFAULT 0,
   `score` INT NOT NULL DEFAULT 0,
