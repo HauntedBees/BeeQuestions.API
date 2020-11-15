@@ -311,7 +311,7 @@ class QuestionsController extends BeeController {
         switch($type) {
             case 0: // popular
                 $whereQuery = "WHERE a.status = 0";
-                $orderBy = "ORDER BY a.score DESC"; // TODO: score/views/questions?
+                $orderBy = "ORDER BY COUNT(DISTINCT q.id) DESC";
                 break;
             case 1: // recent
                 $whereQuery = "WHERE a.status = 0";
@@ -319,7 +319,7 @@ class QuestionsController extends BeeController {
                 break;
             case 2: // needs love
                 $whereQuery = "WHERE status = 0";
-                $orderBy = "ORDER BY a.views ASC"; // TODO: score/views/questions?
+                $orderBy = "ORDER BY COUNT(DISTINCT q.id) ASC";
                 break;
             case 3: // in voting
                 $whereQuery = "WHERE a.status = 1";
@@ -510,6 +510,30 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region User */
+    /** @return bool */
+    public function PostReport(BQReport $report) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->Unauthorized("Please log in to flag content."); }
+        $realID = 0;
+        $column = "";
+        switch($report->type) {
+            case "user":
+                $realID = intval($report->id);
+                $column = "reporteduser";
+                break;
+            case "question":
+                $realID = intval($report->id);
+                $column = "reportedquestion";
+                break;
+            case "answer":
+                $realID = $this->FindAnswerID($report->id);
+                $column = "reportedanswer";
+                break;
+        }
+        if($realID === 0) { return $this->response->Error("Report failed."); }
+        $this->db->ExecuteNonQuery("INSERT INTO user_report (user, reported, dismissed, $column) VALUES (:u, NOW(), 0, :v)", ["u" => $userID, "v" => $realID]);
+        return $this->response->Message("Thank you for reporting that $report->type. We'll look into it soon!");
+    }
     /** @return bool */
     public function PostDisplayName(string $newName) {
         $userID = $this->GetMaybeUserId();

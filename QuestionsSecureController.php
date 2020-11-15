@@ -38,9 +38,34 @@ class QuestionsSecureController extends BeeSecureController {
             $whereQuery
             GROUP BY u.id
             ORDER BY u.lastlogin DESC
-            LIMIT 50", $params));
+            LIMIT 25", $params));
     }
-    public function PostBlock(BQBlockUser $block) {
+    public function GetReports() {
+        return $this->response->OK($this->db->GetDataTable(
+            "SELECT 
+                ur.id,
+                CASE
+                    WHEN ur.reportedanswer IS NOT NULL THEN 'answer'
+                    WHEN ur.reportedquestion IS NOT NULL THEN 'question'
+                    WHEN ur.reporteduser IS NOT NULL THEN 'user'
+                END AS type,
+                CASE
+                    WHEN ur.reportedanswer IS NOT NULL THEN a.answer
+                    WHEN ur.reportedquestion IS NOT NULL THEN q.question
+                    WHEN ur.reporteduser IS NOT NULL THEN ru.displayname
+                END AS value,
+                ur.reported,
+                u.displayname
+            FROM user_report ur
+                INNER JOIN users u ON ur.user = u.id
+                LEFT JOIN answer a ON ur.reportedanswer = a.id
+                LEFT JOIN question q ON ur.reportedquestion = q.id
+                LEFT JOIN users ru ON ur.reporteduser = ru.id
+            WHERE dismissed = 0
+            ORDER BY reported DESC
+            LIMIT 25"));
+    }
+    public function PostBlock(BQBlockUser $block, bool $response = true) {
         $blockSQL = "";
         switch($block->blocktype) {
             case "un": $blockSQL = "NULL"; break;
@@ -51,6 +76,25 @@ class QuestionsSecureController extends BeeSecureController {
             default: throw new BeeException("Invalid block type.");
         }
         $this->db->ExecuteNonQuery("UPDATE users SET blockeduntil = $blockSQL WHERE id = :i", ["i" => $block->userID]);
-        $this->response->Message("Block status changed successfully.");
+        if($response) {
+            $this->response->Message("Block status changed successfully.");
+        }
+    }
+    public function PostReport(BQHandleReport $report) {
+        if($report->remove) {
+            $res = $this->db->GetDataRow("SELECT reporteduser, reportedanswer, reportedquestion FROM user_report WHERE id = :i", ["i" => $report->id]);
+            if($res["reporteduser"] !== null) {
+                $block = new BQBlockUser();
+                $block->blocktype = "wk";
+                $block->userID = intval($res["reporteduser"]);
+                $this->PostBlock($block, false);
+            } else if($res["reportedanswer"] !== null) {
+                $this->db->ExecuteNonQuery("UPDATE answer SET status = 1, closed = NOW(), answer = '[This post has been deleted by an administrator]' WHERE id = :i", ["i" => intval($res["reportedanswer"])]);
+            } else if($res["reportedquestion"] !== null) {
+                $this->db->ExecuteNonQuery("UPDATE question SET question = '[This post has been deleted by an administrator]' WHERE id = :i", ["i" => intval($res["reportedquestion"])]);
+            }
+        }
+        $this->db->ExecuteNonQuery("UPDATE user_report SET dismissed = 1 WHERE id = :i", ["i" => $report->id]);
+        return $this->GetReports();
     }
 }

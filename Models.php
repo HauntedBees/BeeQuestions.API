@@ -25,6 +25,10 @@ class BQBlockUser {
     public int $userID;
     public string $blocktype;
 }
+class BQHandleReport {
+    public int $id;
+    public bool $remove;
+}
 class BQUserToken extends BeeUserToken {
     public BQUser $bquser;
 }
@@ -112,6 +116,10 @@ class BQPostedQuestion {
 class BQPostedAnswer {
     public string $answer;
     public array $tags;
+}
+class BQReport {
+    public string $type;
+    public string $id;
 }
 /* #endregion */
 ?>
