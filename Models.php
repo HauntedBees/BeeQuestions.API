@@ -82,6 +82,7 @@ class BQFullAnswer {
     public ?string $closed;
     public ?int $bestquestion;
     public array $tags;
+    public bool $yours = false;
     public bool $liked = false;
 }
 class BQQuestion {

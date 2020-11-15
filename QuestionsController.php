@@ -24,6 +24,11 @@ require_once "autoload.php";
 //use Abraham\TwitterOAuth\TwitterOAuth;
 const NOTIFICATION_ANSWEREND = 1;
 const NOTIFICATION_BESTQUESTION = 2;
+const NOTIFICATION_LEVELUP = 3;
+const SCORE_BEST_QUESTION = 50;
+const SCORE_RECEIVED_QUESTION = 5;
+const SCORE_GIVE_ANSWER = 2;
+const SCORE_ASK_QUESTION = 1;
 
 class QuestionsController extends BeeController {
     private int $answerDays = 5;
@@ -144,7 +149,8 @@ class QuestionsController extends BeeController {
         $this->PostCloseAnswers(false);
         $userID = $this->GetMaybeUserId();
         $answer = $this->db->GetObject("BQFullAnswer", 
-            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion, DATE_ADD(a.opened, INTERVAL $this->answerDays DAY) AS closedate
+            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion,
+                DATE_ADD(a.opened, INTERVAL $this->answerDays DAY) AS closedate, (u.id = $userID) AS yours
             FROM answer a
                 INNER JOIN users u ON a.user = u.id
             WHERE a.url = :id", ["id" => $answerURL]);
@@ -308,12 +314,17 @@ class QuestionsController extends BeeController {
         $answerID = $this->db->GetInt("SELECT id FROM answer WHERE url = :i AND status = 0", ["i" => $question->answer]);
         if(empty($answerID)) { $this->response->Error("Invalid answer."); }
 
+        $askerID = $this->db->GetInt("SELECT user FROM answer WHERE id = :i", ["i" => $answerID]);
+        if($askerID === $userID) { return $this->response->Error("You can't question your own answers!"); }
+
         $question->question = $this->ValidateText($question->question);
         $this->db->InsertAndReturnID("INSERT INTO question (answer, user, question, posted, score) VALUES (:a, :u, :q, NOW(), 0)", [
             "a" => $answerID,
             "u" => $userID,
             "q" => $question->question
         ]);
+        $this->AddScore($userID, SCORE_ASK_QUESTION);
+        $this->AddScore($askerID, SCORE_RECEIVED_QUESTION);
         return $this->response->OK($this->GetQuestions($answerID, $userID));
     }
     /** @return bool */
@@ -519,17 +530,18 @@ class QuestionsController extends BeeController {
         foreach($dt as $row) {
             $answer = intval($row["answerID"]);
             $question = intval($row["bestQuestionID"]);
+            $answerer = intval($row["answerer"]);
+            $asker = intval($row["asker"]);
             try {
                 $this->db->BeginTransaction();
                 $this->db->ExecuteNonQuery(
                     "UPDATE answer SET closed = DATE_ADD(opened, INTERVAL $this->answerDays DAY), status = 1, bestquestion = :q WHERE id = :a", ["q" => $question, "a" => $answer]
                 );
-                $this->db->ExecuteNonQuery("INSERT INTO notification (user, type, referenceid, posted) VALUES (:u, :t, :x, NOW())", [
-                    "u" => intval($row["answerer"]), "t" => NOTIFICATION_ANSWEREND, "x" => $answer
+                $this->db->ExecuteNonQuery("INSERT INTO notification (user, type, referenceid, posted) VALUES (:ua, :ta, :xa, NOW()), (:uq, :tq, :xq, NOW())", [
+                    "ua" => $answerer, "ta" => NOTIFICATION_ANSWEREND, "xa" => $answer,
+                    "uq" => $asker, "tq" => NOTIFICATION_BESTQUESTION, "xq" => $question
                 ]);
-                $this->db->ExecuteNonQuery("INSERT INTO notification (user, type, referenceid, posted) VALUES (:u, :t, :x, NOW())", [
-                    "u" => intval($row["asker"]), "t" => NOTIFICATION_BESTQUESTION, "x" => $question
-                ]);
+                $this->AddScore($asker, SCORE_BEST_QUESTION);
                 $this->db->CommitTransaction();
                 $response[] = "Answer $answer has been assigned a best answer of $question";
             } catch(Throwable $t) {
@@ -541,6 +553,21 @@ class QuestionsController extends BeeController {
     }
     /* #endregion */
     /* #region Helpers */
+    private function AddScore(int $userID, int $scoreIncrease) {
+        $this->db->ExecuteNonQuery("UPDATE users SET score = score + $scoreIncrease WHERE id = :u", ["u" => $userID]);
+        $levelUpTime = $this->db->GetBool(
+            "SELECT u.score > l.scorerequired
+             FROM users u
+                INNER JOIN userlevel l ON (u.level + 1) = l.level
+            WHERE u.id = :u", ["u" => $userID]);
+        if($levelUpTime) {
+            $this->db->ExecuteNonQuery(
+                "UPDATE users SET level = level + 1 WHERE id = :u;
+                INSERT INTO notification(user, type, referenceid, posted) VALUES (:u, :t, :u, NOW());", [
+                    "u" => $userID, "t" => NOTIFICATION_LEVELUP
+                ]);
+        }
+    }
     private function GetUserIdFromDisplayName(string $displayName):int {
         return $this->db->GetInt("SELECT id FROM users WHERE displayname = :d", ["d" => $displayName]);
     }
