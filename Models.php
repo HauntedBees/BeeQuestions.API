@@ -122,5 +122,17 @@ class BQReport {
     public string $type;
     public string $id;
 }
+class BQNotification {
+    public int $id;
+    public string $notiftype;
+    public string $answerurl;
+    public string $notifsubject;
+    public string $posted;
+    public bool $seen;
+}
+class BQNotifDismiss {
+    public int $notifID;
+    public bool $refreshList;
+}
 /* #endregion */
 ?>

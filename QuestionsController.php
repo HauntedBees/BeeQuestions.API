@@ -515,7 +515,7 @@ class QuestionsController extends BeeController {
     public function GetUpdatedStats() {
         $userID = $this->GetMaybeUserId();
         if($userID === 0) { return $this->response->OK(["notLoggedIn" => true]); }
-        return $this->response->OK($this->db->GetDataRow(
+        $res = $this->db->GetDataRow(
             "SELECT u.score, u.level, u.blockeduntil, l.answersperday AS answersPerDay, l.questionsperday AS questionsPerDay, 
                 COUNT(DISTINCT q.id) AS questionsAsked, COUNT(DISTINCT a.id) AS answersGiven
             FROM users u
@@ -523,7 +523,10 @@ class QuestionsController extends BeeController {
                 LEFT JOIN question q ON q.user = u.id AND q.posted >= DATE_ADD(NOW(), INTERVAL -1 DAY)
                 LEFT JOIN answer a ON a.user = u.id AND a.opened >= DATE_ADD(NOW(), INTERVAL -1 DAY)
             WHERE u.id = :i
-            GROUP BY u.id", ["i" => $userID]));
+            GROUP BY u.id", ["i" => $userID]);
+        $res["notifications"] = $this->NotificationList($userID, false, 0, 4);
+        $res["totalunread"] = $this->db->GetInt("SELECT COUNT(*) FROM notification WHERE seen = 0 AND user = :u", ["u" => $userID]);
+        return $this->response->OK($res);
     }
     /** @return bool */
     public function PostReport(BQReport $report) {
@@ -615,6 +618,67 @@ class QuestionsController extends BeeController {
         $auth = new BeeAuth();
         $auth->ResetPassword($beeAuthID, $vals);
         return $this->response->Message("Password changed successfully.");
+    }
+    /* #endregion */
+    /* #region Notifications */
+    /** @return BQNotification[] */
+    public function GetNotifications(bool $showAll, ?int $offset = 0, ?int $pageSize = 10) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->response->OK(["notLoggedIn" => true]); }
+        return $this->response->OK($this->NotificationList($userID, $showAll, $offset, $pageSize));
+    }
+    public function PostNotificationDismissal(BQNotifDismiss $info) {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to dismiss notifications."); }
+        $matchID = $this->db->GetInt("SELECT id FROM notification WHERE id = :n AND user = :u", ["u" => $userID, "n" => $info->notifID]);
+        if($matchID === 0) { return $this->response->Error("Unable to dismiss notification."); }
+        $this->db->ExecuteNonQuery("UPDATE notification SET seen = 1 WHERE id = :n", ["n" => $matchID]);
+        if($info->refreshList) {
+            return $this->response->OK([
+                "notifications" => $this->NotificationList($userID, false, 0, 4),
+                "totalunread" => $this->db->GetInt("SELECT COUNT(*) FROM notification WHERE seen = 0 AND user = :u", ["u" => $userID])
+            ]);
+        } else {
+            return $this->response->OK(true);
+        }
+    }
+    public function PostDismissAllNotifications() {
+        $userID = $this->GetMaybeUserId();
+        if($userID === 0) { return $this->HandleUnauthorizedAction("Please log in to dismiss notifications."); }
+        $this->db->ExecuteNonQuery("UPDATE notification SET seen = 1 WHERE user = :u", ["u" => $userID]);
+        return $this->response->OK(true);
+    }
+    /** @return BQNotification[] */
+    private function NotificationList(int $userID, bool $showAll, ?int $offset = 0, ?int $pageSize = 10):array {
+        $page = $offset * $pageSize;
+        $addtlWhere = $showAll ? "" : "AND n.seen = 0";
+        return $this->db->GetObjects("BQNotification",
+            "SELECT
+                n.id, 
+                CASE n.type
+                    WHEN 1 THEN 'answerClosed'
+                    WHEN 2 THEN 'bestQuestion'
+                    WHEN 3 THEN 'levelUp'
+                END AS notiftype,
+                CASE n.type
+                    WHEN 1 THEN a.url
+                    WHEN 2 THEN qa.url
+                    ELSE ''
+                END AS answerurl,
+                CASE n.type
+                    WHEN 1 THEN a.answer
+                    WHEN 2 THEN q.question
+                    ELSE ''
+                END AS notifsubject,
+                n.posted,
+                n.seen
+            FROM notification n
+                LEFT JOIN answer a ON n.type = 1 AND n.referenceid = a.id
+                LEFT JOIN question q ON n.type = 2 AND n.referenceid = q.id
+                LEFT JOIN answer qa ON q.answer = qa.id
+            WHERE n.user = :i $addtlWhere
+            ORDER BY n.posted DESC
+            LIMIT $page, $pageSize", ["i" => $userID]);
     }
     /* #endregion */
     /* #region Services */
