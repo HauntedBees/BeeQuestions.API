@@ -116,19 +116,17 @@ class QuestionsController extends BeeController {
         $nameParts1 = ["Football", "Computer", "Space", "Granola", "Hockey", "Baseball", "Taco", "Banana", "Pasta", "Soup", "Bread", "Ska", "Bee", "Punk"];
         $nameParts2 = ["Captain", "Nerd", "Machine", "Snack", "Ball", "Bat", "Bell", "Tree", "Plate", "Bowl", "Tuesdays", "Leader", "Bee", "Punk"];
         $displayname = $nameParts1[array_rand($nameParts1)].$nameParts2[array_rand($nameParts2)].random_int(100000, 999999);
-        $username = "beeauthuser$beeAuthID";
 
         $starterEmojis = ["1F476", "1F41D", "1F36F", "1F438", "1F423", "1F95F", "1F989", "1F431", "1F436"];
         $myEmoji = $starterEmojis[array_rand($starterEmojis)];
         $myColor = "#4B0082";
 
         $this->db->ExecuteNonQuery(
-            "INSERT INTO users (beeauthid, name, displayname, joined, lastlogin, emoji, color, score, level) VALUES (:si, :un, :dn, NOW(), NOW(), :em, :cl, 100, 2)", [
+            "INSERT INTO users (beeauthid, displayname, joined, lastlogin, emoji, color, score, level) VALUES (:si, :dn, NOW(), NOW(), :em, :cl, 100, 2)", [
             "si" => $beeAuthID,
             "dn" => $displayname,
             "cl" => $myColor,
-            "em" => $myEmoji,
-            "un" => $username
+            "em" => $myEmoji
         ]);
         $u = new BQUser();
         $u->displayname = $displayname;

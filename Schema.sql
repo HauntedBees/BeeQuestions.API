@@ -9,8 +9,6 @@ CREATE TABLE `bqdb`.`answer` (
   `status` INT NOT NULL,
   `opened` DATETIME NOT NULL,
   `closed` DATETIME NULL,
-  `views` INT NOT NULL DEFAULT 0,
-  `score` INT NOT NULL DEFAULT 0,
   `bestquestion` BIGINT NULL,
   PRIMARY KEY (`id`),
   INDEX `url_key` (`url` ASC) VISIBLE,
@@ -44,7 +42,6 @@ CREATE TABLE `bqdb`.`question` (
 CREATE TABLE `bqdb`.`users` (
   `id` BIGINT NOT NULL AUTO_INCREMENT,
   `beeauthid` BIGINT NOT NULL,
-  `name` NVARCHAR(100) NOT NULL,
   `displayname` NVARCHAR(100) NULL,
   `joined` DATETIME NOT NULL,
   `lastlogin` DATETIME NOT NULL,
