@@ -22,8 +22,11 @@
  */
 require_once "autoload.php";
 //use Abraham\TwitterOAuth\TwitterOAuth;
+const NOTIFICATION_ANSWEREND = 1;
+const NOTIFICATION_BESTQUESTION = 2;
 
 class QuestionsController extends BeeController {
+    private int $answerDays = 5;
     public function __construct() { parent::__construct("bqdb"); }
     /* #region Auth */
     public function PostRegistration(BeeCredentials $credentials) {
@@ -138,9 +141,10 @@ class QuestionsController extends BeeController {
     /* #region Answers */
     /** @return BQAnswer */
      public function GetAnswer(string $answerURL) {
+        $this->PostCloseAnswers(false);
         $userID = $this->GetMaybeUserId();
         $answer = $this->db->GetObject("BQFullAnswer", 
-            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion
+            "SELECT a.id, u.displayname AS author, a.answer, a.status, a.opened, a.closed, a.bestquestion, DATE_ADD(a.opened, INTERVAL $this->answerDays DAY) AS closedate
             FROM answer a
                 INNER JOIN users u ON a.user = u.id
             WHERE a.url = :id", ["id" => $answerURL]);
@@ -370,9 +374,10 @@ class QuestionsController extends BeeController {
     }
     private function GetQuestions(int $answerID, int $userID):array {
         return $this->db->GetObjects("BQQuestion", 
-            "SELECT q.id, u.displayname AS author, q.question, q.posted, q.score, COUNT(x.user) AS liked, (q.user = $userID) AS yours
+            "SELECT q.id, u.displayname AS author, q.question, q.posted, q.score, COUNT(x.user) AS liked, (q.user = $userID) AS yours, (q.id = a.bestquestion) AS winner
             FROM question q
                 INNER JOIN users u ON q.user = u.id
+                INNER JOIN answer a ON q.answer = a.id
                 LEFT JOIN question_user_likes x ON x.question = q.id AND x.user = $userID
             WHERE q.answer = :id
             GROUP BY q.id", ["id" => $answerID]);
@@ -496,6 +501,43 @@ class QuestionsController extends BeeController {
         $auth = new BeeAuth();
         $auth->ResetPassword($beeAuthID, $vals);
         return $this->response->Message("Password changed successfully.");
+    }
+    /* #endregion */
+    /* #region Services */
+    public function PostCloseAnswers(bool $fromService) {
+        $response = [];
+        $dt = $this->db->GetDataTable(
+            "SELECT a.id AS answerID, a.user AS answerer, q.id AS bestQuestionID, q.user AS asker
+            FROM answer a
+                INNER JOIN (
+                    SELECT id, user, answer, MAX(score)
+                    FROM question q
+                    GROUP BY answer
+                ) q ON q.answer = a.id
+            WHERE a.status = 0
+                AND DATE_ADD(a.opened, INTERVAL $this->answerDays DAY) < NOW()");
+        foreach($dt as $row) {
+            $answer = intval($row["answerID"]);
+            $question = intval($row["bestQuestionID"]);
+            try {
+                $this->db->BeginTransaction();
+                $this->db->ExecuteNonQuery(
+                    "UPDATE answer SET closed = DATE_ADD(opened, INTERVAL $this->answerDays DAY), status = 1, bestquestion = :q WHERE id = :a", ["q" => $question, "a" => $answer]
+                );
+                $this->db->ExecuteNonQuery("INSERT INTO notification (user, type, referenceid, posted) VALUES (:u, :t, :x, NOW())", [
+                    "u" => intval($row["answerer"]), "t" => NOTIFICATION_ANSWEREND, "x" => $answer
+                ]);
+                $this->db->ExecuteNonQuery("INSERT INTO notification (user, type, referenceid, posted) VALUES (:u, :t, :x, NOW())", [
+                    "u" => intval($row["asker"]), "t" => NOTIFICATION_BESTQUESTION, "x" => $question
+                ]);
+                $this->db->CommitTransaction();
+                $response[] = "Answer $answer has been assigned a best answer of $question";
+            } catch(Throwable $t) {
+                $this->db->RollbackTransaction();
+                $response[] = "Failed to close answer $answer: ".$t->getMessage();
+            }
+        }
+        if($fromService) { $this->response->OK($response); }
     }
     /* #endregion */
     /* #region Helpers */

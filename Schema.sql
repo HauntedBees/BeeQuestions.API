@@ -62,7 +62,16 @@ CREATE TABLE `bqdb`.`userlevel` (
   `answersperday` INT NOT NULL,
   `questionsperday` INT NOT NULL,
   PRIMARY KEY (`level`));
-/* TODO: notifications */
+
+CREATE TABLE `bqdb`.`notification` (
+  `id` BIGINT NOT NULL AUTO_INCREMENT,
+  `user` BIGINT NOT NULL,
+  `type` INT NOT NULL,
+  `referenceid` BIGINT NOT NULL,
+  `posted` DATETIME NOT NULL,
+  `seen` BIT NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE INDEX `id_UNIQUE` (`id` ASC) VISIBLE);
 /* #endregion */
 /* #region Relationship Tables */
 CREATE TABLE `bqdb`.`answer_tag` (

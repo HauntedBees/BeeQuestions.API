@@ -78,6 +78,7 @@ class BQFullAnswer {
     public int $status;
     public array $questions;
     public string $opened;
+    public string $closedate;
     public ?string $closed;
     public ?int $bestquestion;
     public array $tags;
