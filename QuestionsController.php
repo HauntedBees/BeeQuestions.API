@@ -471,9 +471,9 @@ class QuestionsController extends BeeController {
             $whereParams = ["t" => "$prefix%"];
         }
         return $this->response->OK($this->db->GetObjects("BQTag",
-            "SELECT t.name, COUNT(at.answer) AS answers
+            "SELECT t.name, COUNT(DISTINCT at.answer) AS answers
              FROM tag t
-                 INNER JOIN answer_tag at ON t.id = at.tag
+                 LEFT JOIN answer_tag at ON t.id = at.tag
              $whereQuery
              GROUP BY t.name
              ORDER BY t.name ASC
