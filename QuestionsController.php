@@ -106,6 +106,7 @@ class QuestionsController extends BeeController {
         $bqdbUser->source = $sourceInfo["source"];
         $bqdbUser->sourcename = $sourceInfo["name"];
         $bqdbUser->lastlogin = date(DATE_ATOM);
+        $bqdbUser->admin = ($userInfo->role & 1) !== 0;
         unset($bqdbUser->beeauthid);
         $token = $this->GenerateUserToken($auth, $userInfo);
         return $this->response->Custom([

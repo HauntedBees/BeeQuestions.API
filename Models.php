@@ -34,6 +34,7 @@ class BQUserToken extends BeeUserToken {
 }
 class BQUser {
     public int $beeauthid;
+    public ?bool $admin;
     public string $displayname;
     public string $joined;
     public string $emoji;
